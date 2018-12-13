@@ -14,7 +14,7 @@ Param (
     [STRING] $StorageAccountName,
     [Parameter (Mandatory=$true)]
     [STRING] $StorageAccountResourceGroup,
-    [Parameter (Mandantory=$true)]
+    [Parameter (Mandatory=$true)]
     [STRING] $StorageContainerName
 )
 
