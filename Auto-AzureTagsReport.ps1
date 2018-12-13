@@ -192,7 +192,7 @@ function Invoke-AzureSubscriptionLoop{
         }
     }     
     Set-AzureRmCurrentStorageAccount -StorageAccountName $StorageAccountName -ResourceGroupName $StorageAccountResourceGroup
-    Set-AzureStorageBlobContent -Container $StorageContainerName -File $Report_Name -Blob $Report_Name
+    Set-AzureStorageBlobContent -Container $StorageContainerName -File $Report_Name -Blob $Report_Name -Force
 }
 
 Invoke-AzureSubscriptionLoop
