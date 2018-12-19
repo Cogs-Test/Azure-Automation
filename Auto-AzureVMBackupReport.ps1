@@ -69,11 +69,22 @@ function Invoke-AzureSubscriptionLoop{
     $subscription_list = Get-AzureRmSubscription
     
     # Fetching the IaaS inventory list for each subscription
-    foreach($subscription_list_iterator in $subscription_list){
+    foreach($subscription in $subscription_list){
 
-        Get-AzureVMBackupReport -subscription_ID $subscription_list_iterator.id -subscription_name $subscription_list_iterator.Name -Report_Name $Report_Name
+        Get-AzureVMBackupReport -subscription_ID $subscription.Id -subscription_name $subscription.Name -Report_Name $Report_Name
        
     }
+    # Connect to Storage Account
+    Set-AzureRmCurrentStorageAccount `
+    -StorageAccountName $StorageAccountName `
+    -ResourceGroupName $StorageAccountResourceGroup
+
+    # Transfer output file to Blob storage
+    Set-AzureStorageBlobContent `
+    -Container $StorageContainerName `
+    -File $Report_Name `
+    -Blob $Report_Name `
+    -Force
 }
 
 function Get-AzureVMBackupReport ([String]$subscription_ID,[String]$subscription_name,[String]$Report_Name) {
@@ -81,22 +92,25 @@ function Get-AzureVMBackupReport ([String]$subscription_ID,[String]$subscription
     $subscription_ID=$subscription_ID.Trim()
     $subscription_name=$subscription_name.Trim()
 
+    Write-Output ("Subscription ID: " + $subscription_ID)
+    Write-Output ("Subscription Name: " + $subscription_name)
+
     # Selecting the subscription
-    Select-AzureRmSubscription -Subscription $subscription_ID
+    Select-AzureRmSubscription -SubscriptionId $subscription_ID
 
     $resource_groups = Get-AzureRmResourceGroup
 
     #Iterate through resource groups
-    foreach($resource_group_iterator in $resource_groups){
+    foreach($resource_group in $resource_groups){
         
         # Initialize Objects
-        $azure_VM_array = $null
-        $azure_VM_array = @()
+        $VM_array = $null
+        $VM_array = @()
         
-        $azureVMDetails = Get-AzureRmVM -ResourceGroupName $resource_group_iterator.ResourceGroupName -Verbose 
+        $vm_list = Get-AzureRmVM -ResourceGroupName $resource_group.ResourceGroupName -Verbose 
         
         #Iterate through VMs
-        foreach($vm_iterator in $azureVMDetails){
+        foreach($vm in $vm_list){
             
             $virtual_machine_backup = [PSCustomObject]@{
                 SubscriptionName = ""
@@ -108,33 +122,33 @@ function Get-AzureVMBackupReport ([String]$subscription_ID,[String]$subscription
             }
 
             $virtual_machine_backup.SubscriptionName = $subscription_name
-            $virtual_machine_backup.ResourceGroupName = $resource_group_iterator.ResourceGroupName
-            $virtual_machine_backup.VMName = $vm_iterator.Name
-            $virtual_machine_backup.Location = $vm_iterator.Location
-            $virtual_machine_backup.VMSize = $vm_iterator.HardwareProfile.VmSize
-            $virtual_machine_backup.OSDisk = $vm_iterator.StorageProfile.OsDisk.OsType
+            $virtual_machine_backup.ResourceGroupName = $resource_group.ResourceGroupName
+            $virtual_machine_backup.VMName = $vm.Name
+            $virtual_machine_backup.Location = $vm.Location
+            $virtual_machine_backup.VMSize = $vm.HardwareProfile.VmSize
+            $virtual_machine_backup.OSDisk = $vm.StorageProfile.OsDisk.OsType
 
-            $azure_VM_array += $virtual_machine_backup
+            $VM_array += $virtual_machine_backup
 
         }
         #$azure_VM_array | Export-Csv "AzureVMReport.csv" -NoTypeInformation -Append
 
         # Initialize Objects
-        $azure_Backup_array = $null
-        $azure_Backup_array = @()
-        $recovery_vault_list = Get-AzureRmRecoveryServicesVault -ResourceGroupName $resource_group_iterator.ResourceGroupName
+        $backup_array = $null
+        $backup_array = @()
+        $recovery_vault_list = Get-AzureRmRecoveryServicesVault -ResourceGroupName $resource_group.Name
 
-        foreach($rsv_iterator in $recovery_vault_list) {
+        foreach($rsv in $recovery_vault_list) {
 
-            Set-AzureRmRecoveryServicesVaultContext -Vault $rsv_iterator
+            Set-AzureRmRecoveryServicesVaultContext -Vault $rsv
                 
             $container_list = Get-AzureRmRecoveryServicesBackupContainer -ContainerType AzureVM 
 
-            foreach($container_list_iterator in $container_list){
+            foreach($container in $container_list){
 
-                $backup_item = Get-AzureRmRecoveryServicesBackupItem -Container $container_list_iterator -WorkloadType "AzureVM"
+                $backup_items = Get-AzureRmRecoveryServicesBackupItem -Container $container -WorkloadType "AzureVM"
                 
-                foreach($backup in $backup_item) {
+                foreach($backup in $backup_items) {
 
                     $backup_object = [PSCustomObject]@{
                         SubscriptionName = ""
@@ -149,17 +163,17 @@ function Get-AzureVMBackupReport ([String]$subscription_ID,[String]$subscription
                     }
 
                     $backup_object.SubscriptionName = $subscription_name
-                    $backup_object.ResourceGroupName = $resource_group_iterator.ResourceGroupName
-                    $backup_object.RecoveryVault = $rsv_iterator.Name
-                    $backup_object.FriendlyName = $container_list_iterator.FriendlyName
+                    $backup_object.ResourceGroupName = $resource_group.ResourceGroupName
+                    $backup_object.RecoveryVault = $rsv.Name
+                    $backup_object.FriendlyName = $container.FriendlyName
                     $backup_object.ProtectionStatus = $backup.ProtectionStatus
                     $backup_object.ProtectionState = $backup.LastBackupStatus
                     $backup_object.LastBackupTime = $backup.LastBackupTime
                     $backup_object.ProtectionPolicyName = $backup.ProtectionPolicyName
                     $backup_object.LatestRecoveryPoint = $backup.LatestRecoveryPoint
                     
-                    if(-Not($azure_Backup_array.FriendlyName -contains $backup_object.FriendlyName)) {
-                        $azure_Backup_array += $backup_object
+                    if(-Not($backup_array.FriendlyName -contains $backup_object.FriendlyName)) {
+                        $backup_array += $backup_object
                     }
                 }
 
@@ -167,13 +181,13 @@ function Get-AzureVMBackupReport ([String]$subscription_ID,[String]$subscription
            
         }
        
-        Write-Output ("Building VM Backup Report for RG: " + $resource_group_iterator.ResourceGroupName  + " SUB: " + $subscription_name)
+        Write-Output ("Building VM Backup Report for RG: " + $resource_group.ResourceGroupName  + " SUB: " + $subscription_name)
 
         # Initialize Object
         $export_array = $null
         $export_array = @()
 
-        foreach($vm_detail in $azure_VM_array) {
+        foreach($vm in $VM_array) {
 
             $export_object = [PSCustomObject]@{
                 SubscriptionName = ""
@@ -190,13 +204,13 @@ function Get-AzureVMBackupReport ([String]$subscription_ID,[String]$subscription
                 LatestRecoveryPoint = ""
             }
 
-            $backup = $azure_Backup_array | ?{($_.FriendlyName.Trim() -eq $vm_detail.VMName.Trim())}
-            $export_object.SubscriptionName = $vm_detail.SubscriptionName
-            $export_object.ResourceGroupName = $vm_detail.ResourceGroupName
-            $export_object.VMName = $vm_detail.VMName
-            $export_object.Location = $vm_detail.Location
-            $export_object.VMSize = $vm_detail.VMSize
-            $export_object.OSDisk = $vm_detail.OSDisk
+            $backup = $backup_array | ?{($_.FriendlyName.Trim() -eq $vm.VMName.Trim())}
+            $export_object.SubscriptionName = $subscription_name
+            $export_object.ResourceGroupName = $vm.ResourceGroupName
+            $export_object.VMName = $vm.VMName
+            $export_object.Location = $vm.Location
+            $export_object.VMSize = $vm.VMSize
+            $export_object.OSDisk = $vm.OSDisk
             $export_object.RecoveryVault = $backup.RecoveryVault
             $export_object.ProtectionStatus = $backup.ProtectionStatus
             $export_object.ProtectionState = $backup.ProtectionState
@@ -212,17 +226,7 @@ function Get-AzureVMBackupReport ([String]$subscription_ID,[String]$subscription
             
     }
 
-    # Connect to Storage Account
-    Set-AzureRmCurrentStorageAccount `
-        -StorageAccountName $StorageAccountName `
-        -ResourceGroupName $StorageAccountResourceGroup
-
-    # Transfer output file to Blob storage
-    Set-AzureStorageBlobContent `
-        -Container $StorageContainerName `
-        -File $Report_Name `
-        -Blob $Report_Name `
-        -Force
+    
     
 }
 

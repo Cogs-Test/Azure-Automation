@@ -39,7 +39,7 @@ function Set-AzureLogin{
             -TenantId $servicePrincipalConnection.TenantId `
             -ApplicationId $servicePrincipalConnection.ApplicationId `
             -CertificateThumbprint $servicePrincipalConnection.CertificateThumbprint | Out-Null 
-            -EnvironmentName AzureUSGovernment | Out-Null 
+            #-EnvironmentName AzureUSGovernment | Out-Null 
         Write-Output "Logged in."
     }
     catch {
@@ -77,19 +77,14 @@ function Invoke-AzureSubscriptionLoop{
     # Fetching subscription list
     $subscription_list = Get-AzureRmSubscription
     
-    Write-Output $subscription_list
-
     # Fetching the IaaS inventory list for each subscription
     foreach($subscription in $subscription_list){
-
-        Write-Output ("Subscription Name: " + $subscription.SubscriptionName)
 
         try {
 
             #Selecting the Azure Subscription
-            Select-AzureRmSubscription -SubscriptionName $subscription.SubscriptionName | Out-Null 
-            #Set-AzureRmCurrentStorageAccount -StorageAccountName "cs2b0db20fd045ex41bbxbe6"
-            
+            Select-AzureRmSubscription -SubscriptionId $subscription 
+
             $resource_groups = Get-AzureRmResourceGroup 
             
             $export_array = $null
@@ -97,7 +92,6 @@ function Invoke-AzureSubscriptionLoop{
             #Iterate through resource groups
             foreach($resource_group in $resource_groups){
                 
-                Write-Output ("Resource Group " + $resource_group.ResourceGroupName)
                 #Get Resource Group Tags
                 $rg_tags = (Get-AzureRmResourceGroup -Name $resource_group.ResourceGroupName)
                 $Tags = $rg_tags.Tags
@@ -111,7 +105,7 @@ function Invoke-AzureSubscriptionLoop{
                             ResourceType = "Resource-Group"
                             ResourceGroupName =$resource_group.ResourceGroupName
                             Location = $resource_group.Location
-                            SubscriptionName = $subscription.SubscriptionName 
+                            SubscriptionName = $subscription.Name 
                             Tag_Key = $_.Key
                             Tag_Value = $_.Value
                             }
@@ -128,7 +122,7 @@ function Invoke-AzureSubscriptionLoop{
                         ResourceType = "Resource-Group"
                         ResourceGroupName =$resource_group.ResourceGroupName
                         Location = $resource_group.Location
-                        SubscriptionName = $subscription.SubscriptionName 
+                        SubscriptionName = $subscription.Name 
                         Tag_Key = "NULL"
                         Tag_Value = "NULL"
                     }                           
@@ -157,7 +151,7 @@ function Invoke-AzureSubscriptionLoop{
                             ResourceType = $resource.ResourceType
                             ResourceGroupName =$resource.ResourceGroupName
                             Location = $resource.Location
-                            SubscriptionName = $subscription.SubscriptionName 
+                            SubscriptionName = $subscription.Name 
                             Tag_Key = $_.Key
                             Tag_Value = $_.Value
                             }
@@ -174,7 +168,7 @@ function Invoke-AzureSubscriptionLoop{
                     ResourceType = $resource.ResourceType
                     ResourceGroupName =$resource.ResourceGroupName
                     Location = $resource.Location
-                    SubscriptionName = $subscription.SubscriptionName 
+                    SubscriptionName = $subscription.Name 
                     Tag_Key = "NULL"
                     Tag_Value = "NULL"
                     }                           
