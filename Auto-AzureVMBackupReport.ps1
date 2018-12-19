@@ -32,7 +32,7 @@ function Set-AzureLogin{
             -TenantId $servicePrincipalConnection.TenantId `
             -ApplicationId $servicePrincipalConnection.ApplicationId `
             -CertificateThumbprint $servicePrincipalConnection.CertificateThumbprint | Out-Null 
-            -EnvironmentName AzureUSGovernment | Out-Null 
+            #-EnvironmentName AzureUSGovernment | Out-Null 
         Write-Output "Logged in."
     }
     catch {
