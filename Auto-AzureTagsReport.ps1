@@ -7,6 +7,11 @@
     .NOTES
         AUTHOR: Michael Taylor <michael.taylor@cognosante.com>
         LASTEDIT: 8/24/2018
+        
+    .PARAMETERS
+        $StorageAccountName: Name of storage account that will accept transfer of output file
+        $StorageAccountResourceGroup: Resource Group that contains storage account.
+        $StorageContainerName: Name of container within storage account that will receive output file.
 #>
 
 Param (
@@ -18,40 +23,40 @@ Param (
     [STRING] $StorageContainerName
 )
 
-$connectionName = "AzureRunAsConnection"
 
-function Set-CogAzureLogin{
+function Set-AzureLogin{
     
+    $connectionName = "AzureRunAsConnection"
     try
-{
-    # Get the connection "AzureRunAsConnection "
-    $servicePrincipalConnection=Get-AutomationConnection -Name $connectionName         
-    Write-Output $servicePrincipalConnection
-
-    "Logging in to Azure..."
-    Add-AzureRmAccount `
-        -ServicePrincipal `
-        -TenantId $servicePrincipalConnection.TenantId `
-        -ApplicationId $servicePrincipalConnection.ApplicationId `
-        -CertificateThumbprint $servicePrincipalConnection.CertificateThumbprint | Out-Null 
-        #-EnvironmentName AzureUSGovernment | Out-Null 
-    Write-Output "Logged in."
-}
-catch {
-    if (!$servicePrincipalConnection)
     {
-        $ErrorMessage = "Connection $connectionName not found."
-        throw $ErrorMessage
-    } else{
-        Write-Error -Message $_.Exception
-        throw $_.Exception
+        # Get the connection "AzureRunAsConnection "
+        $servicePrincipalConnection=Get-AutomationConnection -Name $connectionName         
+        Write-Output $servicePrincipalConnection
+
+        "Logging in to Azure..."
+        Add-AzureRmAccount `
+            -ServicePrincipal `
+            -TenantId $servicePrincipalConnection.TenantId `
+            -ApplicationId $servicePrincipalConnection.ApplicationId `
+            -CertificateThumbprint $servicePrincipalConnection.CertificateThumbprint | Out-Null 
+            -EnvironmentName AzureUSGovernment | Out-Null 
+        Write-Output "Logged in."
     }
-}
+    catch {
+        if (!$servicePrincipalConnection)
+        {
+            $ErrorMessage = "Connection $connectionName not found."
+            throw $ErrorMessage
+        } else{
+            Write-Error -Message $_.Exception
+            throw $_.Exception
+        }
+    }
 
     
 }
 
-function Get-CogFileName ([String]$Report_Name){    
+function Get-FileName ([String]$Report_Name){    
     
     $date=Get-Date -UFormat "%Y%m%d"
 
@@ -62,11 +67,11 @@ function Get-CogFileName ([String]$Report_Name){
 
 function Invoke-AzureSubscriptionLoop{
     
-    Set-CogAzureLogin
+    Set-AzureLogin
     
     
     # Fetch current working directory 
-    $Report_Name = Get-CogFileName -Report_Name "AzureTagsReport"
+    $Report_Name = Get-FileName -Report_Name "AzureTagsReport"
     Write-Output ("Writing report " + $Report_Name)
 
     # Fetching subscription list
@@ -179,7 +184,6 @@ function Invoke-AzureSubscriptionLoop{
 
             #Generating Output
             Write-Output ("Writing to: " + $Report_Name)
-            #write $export_array
             $export_array | Export-Csv $Report_Name -NoTypeInformation -Append
            
         }
@@ -191,8 +195,17 @@ function Invoke-AzureSubscriptionLoop{
 	        Exit $ERRORLEVEL
         }
     }     
-    Set-AzureRmCurrentStorageAccount -StorageAccountName $StorageAccountName -ResourceGroupName $StorageAccountResourceGroup
-    Set-AzureStorageBlobContent -Container $StorageContainerName -File $Report_Name -Blob $Report_Name -Force
+    # Connect to Storage Account
+    Set-AzureRmCurrentStorageAccount `
+        -StorageAccountName $StorageAccountName `
+        -ResourceGroupName $StorageAccountResourceGroup
+
+    # Transfer output file to Blob storage
+    Set-AzureStorageBlobContent `
+        -Container $StorageContainerName `
+        -File $Report_Name `
+        -Blob $Report_Name `
+        -Force
 }
 
 Invoke-AzureSubscriptionLoop
