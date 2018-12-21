@@ -7,6 +7,11 @@
         LASTEDIT: 8/24/2018
 #>
 
+#Requires –Modules AzureRM
+#Requires –Modules AzureRM.Backup
+#Requires –Modules AzureRM.RecoveryServices
+#Requires –Modules AzureRM.SiteRecovery
+
 Param (
     [Parameter (Mandatory=$true)]
     [STRING] $StorageAccountName,
