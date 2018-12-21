@@ -15,11 +15,6 @@
 param 
 (
     
-    
-    $UseExistingData,
-    [Parameter(Mandatory=$false,ParameterSetName='ReportParametersObject')]
-    [PSObject]
-    $ReportParameterObject,
     [Parameter (Mandatory=$true)]
     [STRING] $StorageAccountName,
     [Parameter (Mandatory=$true)]
