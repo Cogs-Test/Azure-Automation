@@ -14,17 +14,8 @@
 [CmdletBinding(DefaultParameterSetName='ReportParameters')]
 param 
 (
-    [Parameter(Mandatory=$false,ParameterSetName='ReportParameters')]
-    [string]
-    $LeftLogo ='https://www.oit.va.gov/design-guide/_media/img/logos/OIT_logo.png',
-    [Parameter(Mandatory=$false,ParameterSetName='ReportParameters')]
-    [string]
-    $RightLogo ='https://azurefieldnotesblog.blob.core.windows.net/wp-content/2017/02/ReportHTML.png', 
-    [Parameter(Mandatory=$false,ParameterSetName='ReportParameters')]
-    [string]
-    $TitleText = 'VA Azure RBAC Report',
-    [Parameter(Mandatory=$false,ParameterSetName='ReportParameters')]
-    [string]
+    
+    
     $UseExistingData,
     [Parameter(Mandatory=$false,ParameterSetName='ReportParametersObject')]
     [PSObject]
@@ -108,6 +99,9 @@ function Invoke-AzureSubscriptionLoop{
 
 function Run-AzureRBACReport([String]$subscription_ID,[String]$subscription_name) {
 
+    $TitleText = 'VA Azure RBAC Report'
+    $RightLogo ='https://azurefieldnotesblog.blob.core.windows.net/wp-content/2017/02/ReportHTML.png'
+    $LeftLogo ='https://www.oit.va.gov/design-guide/_media/img/logos/OIT_logo.png'
 
     $subscription_ID=$subscription_ID.Trim()
     $subscription_name=$subscription_name.Trim()
@@ -117,69 +111,63 @@ function Run-AzureRBACReport([String]$subscription_ID,[String]$subscription_name
     $ReportName = Get-FileName -Report_Name $Name -Type "File"
 
     Select-AzureRmSubscription -SubscriptionName $subscription_list_iterator.Name
+  
+    $RoleDefinitions = Get-AzureRmRoleDefinition 
+    $AssignedRoles = Get-AzureRmRoleAssignment 
+    $AzureUsers = $AssignedRoles | select SignInName -Unique
+    $GroupAssignedRoles = $AssignedRoles  | group DisplayName 
 
-    if ($UseExistingData) 
-    {
-        Write-Warning "Reusing the data, helpful when developing the report"
-    } 
-    else 
-    {
-        $RoleDefinitions = Get-AzureRmRoleDefinition 
-        $AssignedRoles = Get-AzureRmRoleAssignment 
-        $AzureUsers = $AssignedRoles | select SignInName -Unique
-        $GroupAssignedRoles = $AssignedRoles  | group DisplayName 
-
-        $ResourceGroups = Get-AzureRmResourceGroup 
-        $i=0;$Records = $ResourceGroups.Count
-        $RGRoleAssignments = @()
-        $Activity = $subscription_name + ": Getting role assignments from Resource Groups"
-        foreach ($RG in $ResourceGroups ) {
-            Write-Progress -PercentComplete ($i/$Records *100) -Activity $Activity 
-            $RoleData = Get-AzureRmRoleAssignment -ResourceGroupName $RG.ResourceGroupName | select DisplayName, SignInName, RoleDefinitionName, Scope
-            foreach($User in $RoleData) {
+    $ResourceGroups = Get-AzureRmResourceGroup 
+    $i=0;$Records = $ResourceGroups.Count
+    $RGRoleAssignments = @()
+    $Activity = $subscription_name + ": Getting role assignments from Resource Groups"
+    foreach ($RG in $ResourceGroups ) {
+        Write-Progress -PercentComplete ($i/$Records *100) -Activity $Activity 
+        $RoleData = Get-AzureRmRoleAssignment -ResourceGroupName $RG.ResourceGroupName | select DisplayName, SignInName, RoleDefinitionName, Scope
+        foreach($User in $RoleData) {
                 
-                $RGRoleAssignment = '' | select Role, RoleData
-                $NewUser = '' | Select DisplayName, SignInName, RoleDefinitionName, Scope, ResourceGroup
-                $NewUser.ResourceGroup = $RG.ResourceGroupName
-                $NewUser.DisplayName = $User.DisplayName
-                $NewUser.SignInName = $User.SignInName
-                $NewUser.RoleDefinitionName = $User.RoleDefinitionName
-                $NewUser.Scope = $User.Scope
+            $RGRoleAssignment = '' | select Role, RoleData
+            $NewUser = '' | Select DisplayName, SignInName, RoleDefinitionName, Scope, ResourceGroup
+            $NewUser.ResourceGroup = $RG.ResourceGroupName
+            $NewUser.DisplayName = $User.DisplayName
+            $NewUser.SignInName = $User.SignInName
+            $NewUser.RoleDefinitionName = $User.RoleDefinitionName
+            $NewUser.Scope = $User.Scope
                 
-                $found = $FALSE
-                $index = 0
-                foreach($Role in $RGRoleAssignments) {
-                    if($Role.Role -eq $User.RoleDefinitionName) {
-                        $found = $TRUE
-                    } else {
-                        $index++
-                    }
-                }
-
-                if($found) {
-
-                    $RGRoleAssignments[$index].RoleData += $NewUser
-
+            $found = $FALSE
+            $index = 0
+            foreach($Role in $RGRoleAssignments) {
+                if($Role.Role -eq $User.RoleDefinitionName) {
+                    $found = $TRUE
                 } else {
-
-                    #$RGRoleAssignment = '' | select Role, RoleData
-                    $RGRoleAssignment.Role = $User.RoleDefinitionName
-                    $RGRoleAssignment.RoleData = @($NewUser)
-                    $RGRoleAssignments += $RGRoleAssignment
-
+                    $index++
                 }
+            }
+
+            if($found) {
+
+                $RGRoleAssignments[$index].RoleData += $NewUser
+
+            } else {
+
+                #$RGRoleAssignment = '' | select Role, RoleData
+                $RGRoleAssignment.Role = $User.RoleDefinitionName
+                $RGRoleAssignment.RoleData = @($NewUser)
+                $RGRoleAssignments += $RGRoleAssignment
 
             }
-            $I++
-        }
 
-        $UserAssignedRBAC = @()
-        foreach ($AzureUser in ($AzureUsers | ? {$_.SignInName -ne $null}) ) {
-            $UserAssignedRBAC  += Get-AzureRmRoleAssignment -SignInName $AzureUser.SignInName | Select DisplayName, RoleDefinitionName, Scope
-            #GROUP... $UserAssignedRBAC += Get-AzureRmRoleAssignment -SignInName $AzureUser.SignInName -ExpandPrincipalGroups | FL DisplayName, RoleDefinitionName, Scope
         }
-        $GroupedUserAssignedRBAC = $UserAssignedRBAC | group DisplayName
+        $I++
     }
+
+    $UserAssignedRBAC = @()
+    foreach ($AzureUser in ($AzureUsers | ? {$_.SignInName -ne $null}) ) {
+        $UserAssignedRBAC  += Get-AzureRmRoleAssignment -SignInName $AzureUser.SignInName | Select DisplayName, RoleDefinitionName, Scope
+        #GROUP... $UserAssignedRBAC += Get-AzureRmRoleAssignment -SignInName $AzureUser.SignInName -ExpandPrincipalGroups | FL DisplayName, RoleDefinitionName, Scope
+    }
+    $GroupedUserAssignedRBAC = $UserAssignedRBAC | group DisplayName
+    
 
     $ReportTitle = $TitleText + " - " + $subscription_name 
     $rpt = @()
