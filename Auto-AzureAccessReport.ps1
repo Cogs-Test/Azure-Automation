@@ -28,67 +28,56 @@ param
     $UseExistingData,
     [Parameter(Mandatory=$false,ParameterSetName='ReportParametersObject')]
     [PSObject]
-    $ReportParameterObject
+    $ReportParameterObject,
+    [Parameter (Mandatory=$true)]
+    [STRING] $StorageAccountName,
+    [Parameter (Mandatory=$true)]
+    [STRING] $StorageAccountResourceGroup,
+    [Parameter (Mandatory=$true)]
+    [STRING] $StorageContainerName
 )
 
-function Get-FileName ([String] $Type,[String]$Report_Name){    
+function Set-AzureLogin{
     
-    $file_path = "c:\temp\"
-    $date=Get-Date -UFormat "%Y%m%d"
-
-    Set-Location -Path $file_path  
-    
-    $file_path = "C:\temp\AzureReports\"
-    $file_name = $Report_Name + "-" + $date + ".csv"
-    if (-Not(Test-Path $file_path -PathType Container)){
-        new-item $file_path -ItemType directory -Force
-    }
-    if (Test-Path $file_name -PathType Leaf){
-        remove-item $file_name -Force
-    }
-    Set-Location -Path $file_path
-
-    if($Type -eq 'File') {
-        
-        return $file_name
-    
-    } elseif ($Type -eq 'Path')  {
-
-        return $file_path
-    
-    }
-}
-
- function Set-AzureLogin{
-
-    $needLogin = $true
-    Try 
+    $connectionName = "AzureRunAsConnection"
+    try
     {
-        $content = Get-AzureRmContext
-        echo $content
-        if ($content) 
+        # Get the connection "AzureRunAsConnection "
+        $servicePrincipalConnection=Get-AutomationConnection -Name $connectionName         
+        Write-Output $servicePrincipalConnection
+
+        "Logging in to Azure..."
+        Add-AzureRmAccount `
+            -ServicePrincipal `
+            -TenantId $servicePrincipalConnection.TenantId `
+            -ApplicationId $servicePrincipalConnection.ApplicationId `
+            -CertificateThumbprint $servicePrincipalConnection.CertificateThumbprint | Out-Null 
+            #-EnvironmentName AzureUSGovernment | Out-Null 
+        Write-Output "Logged in."
+    }
+    catch {
+        if (!$servicePrincipalConnection)
         {
-            $needLogin = ([string]::IsNullOrEmpty($content.Account))
-        } 
-    } 
-    Catch 
-    {
-        if ($_ -like "*Login-AzureRmAccount to login*") 
-        {
-            $needLogin = $true
-        } 
-        else 
-        {
-            throw
+            $ErrorMessage = "Connection $connectionName not found."
+            throw $ErrorMessage
+        } else{
+            Write-Error -Message $_.Exception
+            throw $_.Exception
         }
     }
 
-    if ($needLogin)
-    {        
-        #make sure to use -Environment      
-        Add-AzureRmAccount -Environment AzureUSGovernment
-    }
+    
 }
+
+function Get-FileName ([String]$Report_Name){    
+    
+    $date=Get-Date -UFormat "%Y%m%d"
+
+    $file_name = $Report_Name + "-" + $date + ".csv"
+    
+    return $file_name
+}
+
 
 function Invoke-AzureSubscriptionLoop{
     
@@ -103,6 +92,18 @@ function Invoke-AzureSubscriptionLoop{
         Run-AzureRBACReport -subscription_ID $subscription_list_iterator.id -subscription_name $subscription_list_iterator.Name
        
     }
+
+    # Connect to Storage Account
+    Set-AzureRmCurrentStorageAccount `
+    -StorageAccountName $StorageAccountName `
+    -ResourceGroupName $StorageAccountResourceGroup
+
+    # Transfer output file to Blob storage
+    Set-AzureStorageBlobContent `
+    -Container $StorageContainerName `
+    -File $Report_Name `
+    -Blob $Report_Name `
+    -Force
 }
 
 function Run-AzureRBACReport([String]$subscription_ID,[String]$subscription_name) {
